@@ -1,75 +1,80 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import logging
-import cv2
-import numpy as np
-from transformers import AutoImageProcessor, AutoModel
 import torch
 from PIL import Image
+from transformers import BlipProcessor, BlipForConditionalGeneration, AutoImageProcessor, AutoModel
+import numpy as np
 import pillow_heif
+import cv2
+import asyncio
+import logging
+from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
 CORS(app)
 
-# Load model
-processor = AutoImageProcessor.from_pretrained("google/vit-base-patch16-224-in21k", use_fast=True)
-model = AutoModel.from_pretrained("google/vit-base-patch16-224-in21k")
-model.eval()
+# Device configuration
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+# Load BLIP and ViT models only once on startup
+def load_models():
+    print('Loading models...')
+    blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base", use_fast=True)
+    blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base").to(device).eval()
+    vit_processor = AutoImageProcessor.from_pretrained("google/vit-base-patch16-224-in21k", use_fast=True)
+    vit_model = AutoModel.from_pretrained("google/vit-base-patch16-224-in21k").to(device).eval()
+    print('Models loaded!')
+    return blip_model, blip_processor, vit_model, vit_processor
+
+blip_model, blip_processor, vit_model, vit_processor = load_models()
 logging.basicConfig(level=logging.DEBUG)
 
+# Configure thread pool for async processing
+executor = ThreadPoolExecutor()
+
 @app.route('/extract-image', methods=['POST'])
-def extract_image():
+async def extract_image():
     if 'image' not in request.files:
         return jsonify({"error": "No image uploaded"}), 400
-
+    
     image_file = request.files['image']
-    app.logger.info("Image received: %s", image_file.filename)
+    app.logger.info("Processing image: %s", image_file.filename)
 
     try:
-        # Load the image, checking for HEIC format
-        image_file.seek(0)  # Ensure the pointer is at the start of the file
-        if image_file.filename.lower().endswith('.heic'):
-            # Open HEIC image with pillow_heif and convert to RGB
-            heif_image = pillow_heif.read_heif(image_file)
-            image = Image.frombytes(
-                heif_image.mode,
-                heif_image.size,
-                heif_image.data
-            )
-            image = image.convert("RGB")  # Ensure compatibility with OpenCV
-        else:
-            # Handle other formats with OpenCV
-            file_bytes = np.asarray(bytearray(image_file.read()), dtype=np.uint8)
-            image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-            if image is None:
-                raise ValueError("Failed to decode image.")
+        # Process image loading and inference asynchronously
+        image = await asyncio.to_thread(load_image, image_file)
+        embeddings_task = asyncio.to_thread(infer_embeddings, image)
+        keywords_task = asyncio.to_thread(infer_keywords, image)
 
-            # Convert OpenCV BGR to RGB for consistency
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            image = Image.fromarray(image) 
-
-        # Image preprocessing
-        inputs = preprocess_image(image)
-
-        # Image inference
-        with torch.no_grad():  # Disable gradient calculation for inference
-            outputs = model(**inputs)
-            embeddings = outputs.last_hidden_state
-
-        # Flatten embeddings for easier comparison later
-        flatten_embeddings = embeddings.detach().cpu().numpy().flatten()  # Ensure it's a plain numpy array
-
-        return jsonify({"embeddings": flatten_embeddings.tolist()})
-
+        embeddings, keywords = await asyncio.gather(embeddings_task, keywords_task)
+        return jsonify({"embeddings": embeddings, "keywords": keywords})
     except Exception as e:
         app.logger.error("Error processing image: %s", e)
-        return jsonify({"embeddings": [0]*(197*768)}), 500
+        return jsonify({"error": "Image processing failed"}), 500
 
-def preprocess_image(image):
-    image = image.resize((224, 224))
-    inputs = processor(images=image, return_tensors="pt")
-    return inputs
+def infer_keywords(image, max_length=10):
+    inputs = blip_processor(image, return_tensors="pt").to(device)
+    with torch.no_grad():
+        output = blip_model.generate(**inputs, max_length=max_length, num_beams=5)
+    return blip_processor.decode(output[0], skip_special_tokens=True)
+
+def infer_embeddings(image):
+    inputs = vit_processor(images=image, return_tensors="pt").to(device)
+    with torch.no_grad():
+        embeddings = vit_model(**inputs).last_hidden_state
+    return embeddings.cpu().numpy().flatten().tolist()  # Flatten at return
+
+def load_image(image_file):
+    image_file.seek(0)
+    if image_file.filename.lower().endswith('.heic'):
+        heif_image = pillow_heif.read_heif(image_file)
+        return Image.frombytes(heif_image.mode, heif_image.size, heif_image.data).convert("RGB")
+    else:
+        file_bytes = np.asarray(bytearray(image_file.read()), dtype=np.uint8)
+        image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+        if image is None:
+            raise ValueError("Failed to decode image.")
+        return Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
