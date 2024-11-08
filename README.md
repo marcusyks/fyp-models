@@ -11,8 +11,7 @@
 - Use a `Flask` server to run both models and extract feature and keywords via API call
 
 ## Changes:
-- `Tag2Text` model to `BLIP` model: Computation time too long and model too big (40s/image - 30s/image) (60s/setup - 20s/setup)
+- `Tag2Text` model to [`BLIP` model + nltk keyword extraction]: Computation time too long and model too big (40s/image - 30s/image) (60s/setup - 20s/setup)
 - `flask[async]`: concurrent image extracting and keyword extracting (30s/image - 25s/image)
-- ONNX conversion: make inference faster ()
 
 

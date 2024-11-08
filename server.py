@@ -9,12 +9,16 @@ import cv2
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
+import nltk
+from nltk.corpus import stopwords
 
 app = Flask(__name__)
 CORS(app)
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+nltk.download('stopwords')
+stop_words = set(stopwords.words('english'))
 
 # Load BLIP and ViT models only once on startup
 def load_models():
@@ -36,7 +40,7 @@ executor = ThreadPoolExecutor()
 async def extract_image():
     if 'image' not in request.files:
         return jsonify({"error": "No image uploaded"}), 400
-    
+
     image_file = request.files['image']
     app.logger.info("Processing image: %s", image_file.filename)
 
@@ -47,6 +51,9 @@ async def extract_image():
         keywords_task = asyncio.to_thread(infer_keywords, image)
 
         embeddings, keywords = await asyncio.gather(embeddings_task, keywords_task)
+        words = keywords.split()
+        keywords = [word.strip() for word in words if word.lower() not in stop_words]
+        print(keywords)
         return jsonify({"embeddings": embeddings, "keywords": keywords})
     except Exception as e:
         app.logger.error("Error processing image: %s", e)
