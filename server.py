@@ -2,35 +2,35 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import torch
 from PIL import Image
-from transformers import BlipProcessor, BlipForConditionalGeneration, AutoImageProcessor, AutoModel
+from transformers import AutoImageProcessor, AutoModel
 import numpy as np
 import pillow_heif
 import cv2
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
-import nltk
-from nltk.corpus import stopwords
+import timm
+from classes import IMAGENET2012_CLASSES
 
 app = Flask(__name__)
 CORS(app)
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-nltk.download('stopwords')
-stop_words = set(stopwords.words('english'))
 
 # Load BLIP and ViT models only once on startup
 def load_models():
     print('Loading models...')
-    blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base", use_fast=True)
-    blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base").to(device).eval()
+    mobile_model = timm.create_model('tf_mobilenetv3_small_minimal_100.in1k', pretrained=True)
+    data_config = timm.data.resolve_model_data_config(mobile_model)
+    mobile_processor = timm.data.create_transform(**data_config, is_training=False)
+
     vit_processor = AutoImageProcessor.from_pretrained("google/vit-base-patch16-224-in21k", use_fast=True)
     vit_model = AutoModel.from_pretrained("google/vit-base-patch16-224-in21k").to(device).eval()
     print('Models loaded!')
-    return blip_model, blip_processor, vit_model, vit_processor
+    return mobile_model, mobile_processor, vit_model, vit_processor
 
-blip_model, blip_processor, vit_model, vit_processor = load_models()
+mobile_model, mobile_processor, vit_model, vit_processor = load_models()
 logging.basicConfig(level=logging.DEBUG)
 
 # Configure thread pool for async processing
@@ -51,19 +51,26 @@ async def extract_image():
         keywords_task = asyncio.to_thread(infer_keywords, image)
 
         embeddings, keywords = await asyncio.gather(embeddings_task, keywords_task)
-        words = keywords.split()
-        keywords = [word.strip() for word in words if word.lower() not in stop_words]
         print(keywords)
         return jsonify({"embeddings": embeddings, "keywords": keywords})
     except Exception as e:
         app.logger.error("Error processing image: %s", e)
         return jsonify({"error": "Image processing failed"}), 500
 
-def infer_keywords(image, max_length=10):
-    inputs = blip_processor(image, return_tensors="pt").to(device)
+def infer_keywords(image):
     with torch.no_grad():
-        output = blip_model.generate(**inputs, max_length=max_length, num_beams=5)
-    return blip_processor.decode(output[0], skip_special_tokens=True)
+        output = mobile_model(mobile_processor(image).unsqueeze(0))  # unsqueeze single image into batch of 1
+        _, top5_class_indices = torch.topk(output.softmax(dim=1) * 100, k=5)
+
+    predicted_classes = top5_class_indices[0].tolist()
+    class_ids = list(IMAGENET2012_CLASSES.keys())
+    keyword_list = []
+    for idx in predicted_classes:
+        class_id = class_ids[idx]  # Get class ID using index
+        class_name = IMAGENET2012_CLASSES[class_id]  # Look up class name
+        print(f"Predicted Index: {idx}, Class Name: {class_name}")
+        keyword_list.append(class_name)
+    return keyword_list
 
 def infer_embeddings(image):
     inputs = vit_processor(images=image, return_tensors="pt").to(device)

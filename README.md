@@ -1,17 +1,11 @@
 # fyp-models
 
-## Models used:
-- `Tag2Text` for keywords extraction
-- `ViT` for image feature extraction
+## Model used:
+- `MobileCLIP` for both feature extraction and image to text
+( note that numpy version has to be updated to "numpy<v2" )
 
 ## Idea:
-- `BLIP` to extract keywords from each image in gallery
-- `ViT` to extract each image feature and provide similarity search
-
 - Use a `Flask` server to run both models and extract feature and keywords via API call
 
-## Changes:
-- `Tag2Text` model to [`BLIP` model + nltk keyword extraction]: Computation time too long and model too big (40s/image - 30s/image) (60s/setup - 20s/setup)
-- `flask[async]`: concurrent image extracting and keyword extracting (30s/image - 25s/image)
 
 
