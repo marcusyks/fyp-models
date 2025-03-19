@@ -34,6 +34,9 @@
     ```
 
 5. Download **mobileclip_s1.pt** for usage in serverv2.py
+   ```bash
+   huggingface-cli download pcuenq/MobileCLIP-S1
+   ```
 
 6. Run Flask server
     ```bash
