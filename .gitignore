@@ -1,5 +1,3 @@
-images
-
-venv
+mobileclip/venv
 __pycache__
-*.pt
+mobileclip/mobileclip_s1.pt
