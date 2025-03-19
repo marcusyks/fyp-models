@@ -35,7 +35,7 @@ KEYWORDS = [
 def load_models():
     """Load models and tokenizer, ensuring it is done only once."""
     app.logger.info("Loading models...")
-    model, _, preprocess = mobileclip.create_model_and_transforms('mobileclip_s1', pretrained='./mobileclip_s1.pt')
+    model, _, preprocess = mobileclip.create_model_and_transforms('mobileclip_s1')
     tokenizer = mobileclip.get_tokenizer('mobileclip_s1')
     text = tokenizer(KEYWORDS)
     text_features = model.encode_text(text)
