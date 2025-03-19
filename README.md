@@ -10,10 +10,11 @@
 
 ## How to use:
 
-1. Clone git repository
+1. Clone git repository, update submodule
     ```bash
-    git clone https://github.com/marcusyks/fyp-models.git
+    git clone git@github.com:marcusyks/fyp-models.git
     cd fyp-models
+    git submodule update --init --recursive
     ```
 2. Move **serverv2.py** and **requirements.txt** into submodule folder: mobileclip (replace requirements.txt in mobileclip folder)
     ```bash
