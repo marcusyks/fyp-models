@@ -33,11 +33,13 @@
     pip install -r requirements.txt
     ```
 
-5. Run Flask server
+5. Download **mobileclip_s1.pt** for usage in serverv2.py
+
+6. Run Flask server
     ```bash
     python -m serverv2
     ```
 
-6. Adjust frontend API call destination according to server IP
+7. Adjust frontend API call destination according to server IP
 
 
