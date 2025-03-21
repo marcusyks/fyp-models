@@ -10,13 +10,18 @@ import io
 import concurrent.futures
 import mobileclip
 
+"""Flask server to extract image embeddings and keywords using MobileCLIP."""
+
+# Start the Flask app
 app = Flask(__name__)
+
+# Enable CORS for API calls
 CORS(app)
 
-# Device configuration
+# Set the device to GPU if available, otherwise use CPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# Keywords for classification
+# 100 keywords for classification
 KEYWORDS = [
     "cat", "dog", "bird", "car", "mountain", "beach", "food", "person", "family", "holiday",
     "portrait", "landscape", "street", "city", "sky", "sunset", "sunrise", "park", "trees", "flowers",
@@ -32,40 +37,64 @@ KEYWORDS = [
     "art", "painting", "drawing", "sculpture", "book", "library", "school", "university", "graduation", "study"
 ]
 
+
 def load_models():
-    """Load models and tokenizer, ensuring it is done only once."""
+    """Load the MobileCLIP model, image preprocessing function and encoded text features
+
+    Returns:
+        nn.Module: MobileCLIP instantiated model
+        Any: Image preprocessing function
+        Tensor: Encoded text features
+    """
     app.logger.info("Loading models...")
+
+    # Load MobileCLIP model and image preprocessing function
     model, _, preprocess = mobileclip.create_model_and_transforms('mobileclip_s1')
+
+    # Load MobileCLIP text tokenizer and encode the 100 keywords
     tokenizer = mobileclip.get_tokenizer('mobileclip_s1')
     text = tokenizer(KEYWORDS)
     text_features = model.encode_text(text)
     text_features /= text_features.norm(dim=-1, keepdim=True)
+
     app.logger.info("Models loaded successfully!")
     return model, preprocess, text_features
 
-# Load models once during startup to avoid reloading on each request
 model, preprocess, text_features = load_models()
-
+# Set up logging
 logging.basicConfig(level=logging.DEBUG)
+
 
 @app.route('/extract-images', methods=['POST'])
 def extract_image():
-    """Handle the image processing and classification request."""
+    """Extracts keywords and embeddings from a batch of images uploaded in the request in parallel
+
+    Returns:
+        JSON: Embeddings and keywords in JSON format
+    """
     if 'image' not in request.files:
         return jsonify({"error": "No image uploaded"}), 400
 
     image_files = request.files.getlist('image')
     print(f'Number of images in request: {len(image_files)}')
 
-    # Process images in parallel using ThreadPoolExecutor
+    # Process images in parallel
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         results = list(executor.map(process_image, image_files))
 
     print(f'Processing Complete!')
-    return jsonify(results)  # Return results as a JSON response
+    return jsonify(results)
+
 
 def process_image(image_file):
-    """Process the image (e.g., load, classify, and return embeddings/keywords)."""
+    """Processes a single image file and returns the embeddings and keywords of the image.
+
+    Args:
+        image_file (bytes): Image file uploaded in the request
+
+    Returns:
+        dict: Dictionary with embeddings and keywords of the single image file.
+    """
     try:
         image = load_image(image_file)
         embeddings, keywords = inference(image)
@@ -75,7 +104,15 @@ def process_image(image_file):
         return {"error": str(e)}
 
 def inference(image):
-    """Run the inference on the image and return the embeddings and keywords."""
+    """Performs inference on the image provided.
+
+    Args:
+        image (PIL.Image.Image): Processed image file
+
+    Returns:
+        list (float) length 512: image embeddings
+        list (str): list of keywords
+    """
     keywords = []
     # Preprocess the image (resize, crop, normalize)
     image = preprocess(image).unsqueeze(0).to(device)
@@ -88,15 +125,24 @@ def inference(image):
         # Compute text probabilities based on image-text similarity
         text_probs = (100.0 * image_features @ text_features.T).softmax(dim=-1)
 
-        # Select keywords where the probability is above threshold
         for idx, prob in enumerate(text_probs[0].tolist()):
-            if prob > 0.50:  # You can adjust the threshold based on needs
+            if prob > 0.50:
                 keywords.append(KEYWORDS[idx])
 
     return image_features[0].cpu().tolist(), keywords
 
 def load_image(image_file):
-    """Load and decode an image file to a PIL Image."""
+    """Converts uploaded image file bytes into PIL Image
+
+    Args:
+        image_file (bytes): Image file uploaded in the request
+
+    Raises:
+        ValueError: Image file is corrupted and unable to be decoded
+
+    Returns:
+        PIL.Image.Image : Image file is converted into PIL Image object.
+    """
     image_file.seek(0)
     try:
         if image_file.filename.lower().endswith('.heic'):
