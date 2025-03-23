@@ -1,4 +1,5 @@
 # fyp-models
+This repository contains the code required to function the server component which hosts MobileCLIP, the AI model, for inferencing on images. This is used in conjunction with [SnapSage](https://github.com/marcusyks/image-search-app)
 
 ## Model used:
 - `MobileCLIP` for both feature extraction and image to text
