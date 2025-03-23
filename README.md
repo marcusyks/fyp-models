@@ -45,4 +45,11 @@
 
 7. Adjust frontend API call destination according to server IP
 
+## References
+
+This project utilizes [MobileCLIP](https://arxiv.org/abs/2306.06601), a lightweight adaptation of OpenAI's CLIP model optimized for mobile and edge devices. MobileCLIP enables efficient image-text embedding extraction, making it suitable for on-device applications without requiring powerful GPUs.
+
+For more details, refer to:
+- [MobileCLIP Paper](https://arxiv.org/pdf/2311.17049)
+- [Original CLIP by OpenAI](https://github.com/openai/CLIP)
 
