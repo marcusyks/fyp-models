@@ -49,7 +49,7 @@ def load_models():
     app.logger.info("Loading models...")
 
     # Load MobileCLIP model and image preprocessing function
-    model, _, preprocess = mobileclip.create_model_and_transforms('mobileclip_s1')
+    model, _, preprocess = mobileclip.create_model_and_transforms('mobileclip_s1', pretrained='./checkpoints/mobileclip_s1.pt')
 
     # Load MobileCLIP text tokenizer and encode the 100 keywords
     tokenizer = mobileclip.get_tokenizer('mobileclip_s1')

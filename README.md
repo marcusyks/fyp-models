@@ -34,9 +34,9 @@ This repository contains the code required to function the server component whic
     pip install -r requirements.txt
     ```
 
-5. Download **mobileclip_s1.pt** for usage in serverv2.py
+5. Download **mobileclip_s1.pt** for usage in serverv2.py (NOTE this will get all versions of mobileclip)
    ```bash
-   huggingface-cli download pcuenq/MobileCLIP-S1
+   source get_pretrained_models.sh 
    ```
 
 6. Run Flask server
